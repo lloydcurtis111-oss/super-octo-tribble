@@ -1,4 +1,5 @@
 import csv
+import json
 import os
 import sys
 import tempfile
@@ -7,6 +8,7 @@ import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import ai_sort  # noqa: E402
+import replies  # noqa: E402
 import sort_emails as S  # noqa: E402
 
 
@@ -130,6 +132,43 @@ class EndToEndTest(unittest.TestCase):
         self.assertEqual(req["custom_id"], "msg-1")
         self.assertIn("Your page will be disabled", req["params"]["messages"][0]["content"])
         self.assertIn("Possible Scam", req["params"]["output_config"]["format"]["schema"]["properties"]["category"]["enum"])
+
+
+class RepliesTest(unittest.TestCase):
+    def test_first_name(self):
+        self.assertEqual(replies.first_name("Sara Lee"), "Sara")
+        self.assertEqual(replies.first_name('"tom" <x>'), "Tom")
+        self.assertEqual(replies.first_name("Meta Support"), "there")
+        self.assertEqual(replies.first_name("Rights Team"), "there")
+        self.assertEqual(replies.first_name("The Dodo"), "there")
+        self.assertEqual(replies.first_name(""), "there")
+        self.assertEqual(replies.first_name("J"), "there")
+
+    def test_drafts(self):
+        self.assertIn("Hi Sara,", replies.draft_reply("Business & Brand Deals", "Sara Lee"))
+        self.assertIn("exclusive", replies.draft_reply("Video Licensing & Rights", "Jane"))
+        self.assertEqual(replies.draft_reply("Possible Scam", "Meta"), "")
+        self.assertEqual(replies.reply_subject("Re: hi"), "Re: hi")
+        self.assertEqual(replies.reply_subject("hi"), "Re: hi")
+
+    def test_page(self):
+        with tempfile.TemporaryDirectory() as d:
+            mbox = os.path.join(d, "mail.mbox")
+            evil = make_email("Sara <sara@brand.com>", "Sponsorship </script><b>x", "paid partnership budget",
+                              "Reply-To: deals@brand.com\n")
+            with open(mbox, "w") as f:
+                f.write("".join(raw for _, raw in SAMPLES) + evil)
+            S.run(mbox, os.path.join(d, "out"))
+            html = open(os.path.join(d, "out", "replies.html"), encoding="utf-8").read()
+            self.assertNotIn("</script><b>", html)  # subject can't break out of the data block
+            data = html.split('id="data">', 1)[1].split("</script>", 1)[0]
+            emails = json.loads(data)
+            cats = {e["category"] for e in emails}
+            self.assertNotIn("Possible Scam", cats)
+            self.assertIn("Fan Mail", cats)
+            sara = next(e for e in emails if e["subject"].startswith("Sponsorship <"))
+            self.assertEqual(sara["to"], "deals@brand.com")  # Reply-To wins over From
+            self.assertTrue(sara["draft"].startswith("Hi Sara,"))
 
 
 if __name__ == "__main__":

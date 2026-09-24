@@ -33,6 +33,7 @@ from email.utils import parseaddr, parsedate_to_datetime
 from html import unescape
 
 import categories as C
+import replies
 
 BODY_CHARS = 3000  # how much of each body the keyword rules look at
 
@@ -161,6 +162,7 @@ def parse(raw):
         "date": date,
         "from_name": name,
         "from_addr": addr,
+        "reply_to": parseaddr(_header(msg, "Reply-To"))[1].lower(),
         "domain": addr.rsplit("@", 1)[-1] if "@" in addr else "",
         "subject": re.sub(r"\s+", " ", _header(msg, "Subject")).strip(),
         "labels": _header(msg, "X-Gmail-Labels"),
@@ -309,6 +311,7 @@ def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
 
     counts = Counter()
     priority = []
+    reply_items = []
     start = time.time()
     # utf-8-sig so Excel shows names and emoji correctly when double-clicked
     with open(os.path.join(out, "all_emails.csv"), "w", newline="", encoding="utf-8-sig") as f:
@@ -332,6 +335,8 @@ def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
             counts[cat] += 1
             if cat in C.PRIORITY_CATEGORIES:
                 priority.append(row)
+            if cat in replies.PAGE_CATEGORIES:
+                reply_items.append({**row, "reply_to": m.get("reply_to", ""), "snippet": m["body"][:600]})
             if split:
                 if cat not in boxes:
                     boxes[cat] = open(os.path.join(split_dir, safe_filename(cat)), "wb")
@@ -344,6 +349,7 @@ def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
     for fh in boxes.values():
         fh.close()
     write_priority(out, priority)
+    replies.write_page(out, reply_items)
     summary = write_summary(out, counts, sum(counts.values()), time.time() - start)
     return counts, summary
 

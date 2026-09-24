@@ -163,13 +163,13 @@ class App:
 
         btns = ttk.Frame(self.results)
         btns.pack(anchor="w", pady=(14, 0))
-        ttk.Button(btns, text="⭐ Open important emails list",
-                   command=lambda: open_path(os.path.join(self.out, "priority.csv"))).pack(side="left", ipady=4)
+        ttk.Button(btns, text="✉ Read & reply to important emails",
+                   command=lambda: open_path(os.path.join(self.out, "replies.html"))).pack(side="left", ipady=4)
         ttk.Button(btns, text="Open all results",
                    command=lambda: open_path(self.out)).pack(side="left", padx=8, ipady=4)
         ttk.Label(self.results, text=f"Saved in: {self.out}", foreground="gray").pack(anchor="w", pady=(8, 0))
 
-        open_path(os.path.join(self.out, "priority.csv"))
+        open_path(os.path.join(self.out, "replies.html"))
 
 
 def main():

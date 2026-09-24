@@ -48,12 +48,31 @@ to find, like the Desktop.
      "unidentified developer". If it does, **right-click** it, choose **Open**, then click **Open** again.
 2. Click **Choose file...** and pick the Google Takeout `.zip` from step 1.
 3. Click **Sort my emails**. A big inbox takes a few minutes.
-4. When it's done, the **important emails list** opens in Excel (or Numbers).
+4. When it's done, the **Important Emails** page opens in your web browser (see step 5).
    Everything is saved in a **Sorted Emails** folder next to the file you picked.
 
 Everything happens on your own computer. Your emails are never uploaded anywhere.
 
+### 5. Reply to the important emails
+When sorting finishes, an **Important Emails** page opens in your web browser.
+It lists every brand deal, licensing, press and management email, plus the
+newest fan mail. Each one comes with a ready-made reply.
+
+1. Read the email and edit the reply in the box however you like.
+2. Click **Open in Gmail**. A new Gmail message opens with the address,
+   subject and reply already filled in.
+3. Check it and press **Send**. Nothing is ever sent automatically.
+4. Tick **Replied** so the email drops off your list. The page remembers
+   your edits and ticks, even after you close it.
+
+Tip: if you have more than one Gmail account, type the right address into
+the "Your Gmail address" box at the top so replies come from that account.
+
+To change the ready-made wording (or the "Anthony Taylor" sign-off), edit
+[`replies.py`](replies.py) and sort again.
+
 ### What you get in the "Sorted Emails" folder
+- **`replies.html`**: the Important Emails page above. Double-click it to open it again later.
 - **`priority.csv`**: ⭐ start here. The brand deals, licensing, press and
   management emails, newest first.
 - **`all_emails.csv`**: every email, with its category and why it was put there.
