@@ -92,7 +92,7 @@ def select_ids(out_dir, scope):
     if not os.path.exists(path):
         sys.exit(f"{path} not found -- run sort_emails.py first.")
     ids = set()
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         for r in csv.DictReader(f):
             if r["category"] in ("Sent", "Personal"):
                 continue

@@ -27,6 +27,7 @@ import os
 import re
 import sys
 import time
+import zipfile
 from collections import Counter
 from email.utils import parseaddr, parsedate_to_datetime
 from html import unescape
@@ -40,25 +41,42 @@ BODY_CHARS = 3000  # how much of each body the keyword rules look at
 # Reading messages
 # --------------------------------------------------------------------------
 
+def _split_mbox(f):
+    """Yield raw messages from a binary mbox stream, one at a time."""
+    buf = []
+    prev_blank = True
+    for line in f:
+        if line.startswith(b"From ") and prev_blank and buf:
+            yield b"".join(buf)
+            buf = []
+        buf.append(line)
+        prev_blank = line in (b"\n", b"\r\n")
+    if buf:
+        yield b"".join(buf)
+
+
 def iter_mbox(path):
     """Stream raw messages out of an mbox file without loading it into memory.
 
     Yields (message_number, raw_bytes). Works on multi-gigabyte Takeout files.
     """
-    buf = []
-    n = 0
-    prev_blank = True
     with open(path, "rb") as f:
-        for line in f:
-            if line.startswith(b"From ") and prev_blank and buf:
-                n += 1
-                yield n, b"".join(buf)
-                buf = []
-            buf.append(line)
-            prev_blank = line in (b"\n", b"\r\n")
-    if buf:
-        n += 1
-        yield n, b"".join(buf)
+        yield from enumerate(_split_mbox(f), start=1)
+
+
+def iter_zip(path):
+    """Read every .mbox inside a Google Takeout .zip without unzipping it."""
+    with zipfile.ZipFile(path) as zf:
+        members = sorted(n for n in zf.namelist() if n.lower().endswith(".mbox"))
+        if not members:
+            raise ValueError("This zip file has no .mbox email file inside. "
+                             "Make sure the Takeout export included Mail.")
+        n = 0
+        for member in members:
+            with zf.open(member) as f:
+                for raw in _split_mbox(f):
+                    n += 1
+                    yield n, raw
 
 
 def iter_eml_dir(path):
@@ -74,6 +92,8 @@ def iter_eml_dir(path):
 def iter_messages(path):
     if os.path.isdir(path):
         return iter_eml_dir(path)
+    if zipfile.is_zipfile(path):
+        return iter_zip(path)
     return iter_mbox(path)
 
 
@@ -237,7 +257,7 @@ def safe_filename(name):
 def load_contacts(path):
     if not path:
         return frozenset()
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8-sig") as f:
         return frozenset(line.strip().lower() for line in f if line.strip() and not line.startswith("#"))
 
 
@@ -245,7 +265,7 @@ def load_ai_results(path):
     """Read ai_sort.py output: {message id: (category, confidence, reason)}."""
     if not path or not os.path.exists(path):
         return {}
-    with open(path, newline="", encoding="utf-8") as f:
+    with open(path, newline="", encoding="utf-8-sig") as f:
         return {
             int(r["id"]): (r["category"], "ai", "Claude: " + r["reason"])
             for r in csv.DictReader(f)
@@ -269,42 +289,32 @@ def write_summary(out_dir, counts, total, elapsed):
 
 def write_priority(out_dir, rows):
     rows = sorted(rows, key=lambda r: r["date"], reverse=True)
-    with open(os.path.join(out_dir, "priority.csv"), "w", newline="", encoding="utf-8") as f:
+    with open(os.path.join(out_dir, "priority.csv"), "w", newline="", encoding="utf-8-sig") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader()
         w.writerows(rows)
 
 
-def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("source", help="Takeout .mbox file, or a folder of .eml files")
-    ap.add_argument("--out", default="sorted_emails", help="output folder (default: sorted_emails)")
-    ap.add_argument("--contacts", help="text file of known email addresses/domains, one per line -> 'Personal'")
-    ap.add_argument("--no-split", action="store_true", help="skip writing per-category .mbox files")
-    ap.add_argument("--ai-results", help="CSV from ai_sort.py to apply (default: <out>/ai_results.csv if it exists)")
-    args = ap.parse_args(argv)
+def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
+    """Sort every email in `source` into `out`. Returns (counts, summary_text).
 
-    if not os.path.exists(args.source):
-        sys.exit(f"Can't find {args.source}")
-    os.makedirs(args.out, exist_ok=True)
-    contacts = load_contacts(args.contacts)
-    ai_path = args.ai_results or os.path.join(args.out, "ai_results.csv")
-    ai = load_ai_results(ai_path)
-    if ai:
-        print(f"Applying {len(ai):,} Claude decisions from {ai_path}", file=sys.stderr)
-
-    split_dir = os.path.join(args.out, "by_category")
+    progress, if given, is called with the running count every 1,000 emails.
+    """
+    ai = ai or {}
+    os.makedirs(out, exist_ok=True)
+    split_dir = os.path.join(out, "by_category")
     boxes = {}
-    if not args.no_split:
+    if split:
         os.makedirs(split_dir, exist_ok=True)
 
     counts = Counter()
     priority = []
     start = time.time()
-    with open(os.path.join(args.out, "all_emails.csv"), "w", newline="", encoding="utf-8") as f:
+    # utf-8-sig so Excel shows names and emoji correctly when double-clicked
+    with open(os.path.join(out, "all_emails.csv"), "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=FIELDS)
         writer.writeheader()
-        for n, raw in iter_messages(args.source):
+        for n, raw in iter_messages(source):
             try:
                 m = parse(raw)
                 cat, conf, reason = classify(m, contacts)
@@ -322,20 +332,45 @@ def main(argv=None):
             counts[cat] += 1
             if cat in C.PRIORITY_CATEGORIES:
                 priority.append(row)
-            if not args.no_split:
+            if split:
                 if cat not in boxes:
                     boxes[cat] = open(os.path.join(split_dir, safe_filename(cat)), "wb")
                 if not raw.startswith(b"From "):
                     raw = b"From MAILER-DAEMON Thu Jan  1 00:00:00 1970\n" + raw
                 boxes[cat].write(raw if raw.endswith(b"\n") else raw + b"\n")
-            if n % 10000 == 0:
-                print(f"  ...{n:,} emails sorted", file=sys.stderr)
+            if progress and n % 1000 == 0:
+                progress(n)
 
     for fh in boxes.values():
         fh.close()
-    total = sum(counts.values())
-    write_priority(args.out, priority)
-    print(write_summary(args.out, counts, total, time.time() - start))
+    write_priority(out, priority)
+    summary = write_summary(out, counts, sum(counts.values()), time.time() - start)
+    return counts, summary
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("source", help="Takeout .zip or .mbox file, or a folder of .eml files")
+    ap.add_argument("--out", default="sorted_emails", help="output folder (default: sorted_emails)")
+    ap.add_argument("--contacts", help="text file of known email addresses/domains, one per line -> 'Personal'")
+    ap.add_argument("--no-split", action="store_true", help="skip writing per-category .mbox files")
+    ap.add_argument("--ai-results", help="CSV from ai_sort.py to apply (default: <out>/ai_results.csv if it exists)")
+    args = ap.parse_args(argv)
+
+    if not os.path.exists(args.source):
+        sys.exit(f"Can't find {args.source}")
+    ai_path = args.ai_results or os.path.join(args.out, "ai_results.csv")
+    ai = load_ai_results(ai_path)
+    if ai:
+        print(f"Applying {len(ai):,} Claude decisions from {ai_path}", file=sys.stderr)
+
+    def progress(n):
+        if n % 10000 == 0:
+            print(f"  ...{n:,} emails sorted", file=sys.stderr)
+
+    counts, summary = run(args.source, args.out, load_contacts(args.contacts), ai,
+                          split=not args.no_split, progress=progress)
+    print(summary)
     print(f"Results written to {os.path.abspath(args.out)}/")
     if counts["Needs Review"]:
         print(f"Tip: run `python3 ai_sort.py \"{args.source}\" --out {args.out}` to have Claude sort the "

@@ -104,6 +104,26 @@ class EndToEndTest(unittest.TestCase):
                 last = list(csv.DictReader(f))[-1]
             self.assertEqual((last["category"], last["confidence"]), ("Personal", "ai"))
 
+    def test_takeout_zip(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as d:
+            zp = os.path.join(d, "takeout-001.zip")
+            with zipfile.ZipFile(zp, "w") as z:
+                z.writestr("Takeout/Mail/All mail Including Spam and Trash.mbox", "".join(raw for _, raw in SAMPLES))
+                z.writestr("Takeout/archive_browser.html", "<html></html>")
+            counts, _ = S.run(zp, os.path.join(d, "out"))
+            self.assertEqual(sum(counts.values()), len(SAMPLES))
+            self.assertEqual(counts["Possible Scam"], 2)
+
+    def test_zip_without_mail(self):
+        import zipfile
+        with tempfile.TemporaryDirectory() as d:
+            zp = os.path.join(d, "photos.zip")
+            with zipfile.ZipFile(zp, "w") as z:
+                z.writestr("Takeout/Photos/a.jpg", "x")
+            with self.assertRaises(ValueError):
+                S.run(zp, os.path.join(d, "out"))
+
     def test_ai_request_shape(self):
         m = S.parse(SAMPLES[0][1].encode())
         req = ai_sort.make_request(1, m, "claude-opus-5")

@@ -20,44 +20,69 @@ inquiries buried under fan mail, notifications and scams.
 
 ⭐ = priority: these are collected into `priority.csv`, newest first.
 
-## Step 1: Download your email (Gmail)
+## How to use it (no typing needed)
 
-1. Go to <https://takeout.google.com> and sign in to the Gmail account.
+### 1. Download the email from Google
+1. On a computer, go to <https://takeout.google.com> and sign in to the Gmail account.
 2. Click **Deselect all**, then scroll down and tick **Mail** only.
-3. Click **Next step** → **Create export**. Google emails you a download link
-   (for a big inbox this can take hours, even a day).
-4. Download and unzip it. You'll get a file like
-   `Takeout/Mail/All mail Including Spam and Trash.mbox`.
+3. Click **Next step** and then **Create export**.
+4. Wait for Google's email saying the export is ready. For a big inbox this
+   can take several hours or up to a day. Download the file it links to (a
+   `.zip`). **Don't unzip it**, the sorter reads the zip directly.
 
-Using Outlook, Yahoo or something else? Export your mail as `.mbox` or as a
-folder of `.eml` files. Either one works.
+### 2. Install Python (one time only, free)
+- Go to <https://www.python.org/downloads/> and click the big yellow Download button.
+- **Windows:** run the installer. On the first screen, **tick "Add python.exe to PATH"**
+  at the bottom, then click **Install Now**.
+- **Mac:** open the downloaded file and click Continue until it's done.
 
-## Step 2: Sort it (free and private)
+### 3. Get this Email Sorter
+On this project's GitHub page, click the green **Code** button, then
+**Download ZIP**. Unzip it (double-click it) and put the folder somewhere easy
+to find, like the Desktop.
 
-You need Python 3.8 or newer. No other installs are needed for this step.
+### 4. Sort!
+1. Open the Email Sorter folder and double-click:
+   - **Windows:** `Start (Windows)`
+   - **Mac:** `Start (Mac)`. The first time, macOS may say it's from an
+     "unidentified developer". If it does, **right-click** it, choose **Open**, then click **Open** again.
+2. Click **Choose file...** and pick the Google Takeout `.zip` from step 1.
+3. Click **Sort my emails**. A big inbox takes a few minutes.
+4. When it's done, the **important emails list** opens in Excel (or Numbers).
+   Everything is saved in a **Sorted Emails** folder next to the file you picked.
+
+Everything happens on your own computer. Your emails are never uploaded anywhere.
+
+### What you get in the "Sorted Emails" folder
+- **`priority.csv`**: ⭐ start here. The brand deals, licensing, press and
+  management emails, newest first.
+- **`all_emails.csv`**: every email, with its category and why it was put there.
+- **`summary.txt`**: how many emails are in each category.
+- **`by_category`**: one mailbox file per category. To read and reply to
+  them, open these in [Thunderbird](https://www.thunderbird.net) (free) with
+  the ImportExportTools NG add-on.
+
+Search for an email in Gmail by its subject to reply to it from your normal inbox.
+
+## For the technical person: command line
+
+Using Outlook, Yahoo or another provider? Export the mail as `.mbox` or as a
+folder of `.eml` files, then run:
 
 ```bash
-python3 sort_emails.py "Takeout/Mail/All mail Including Spam and Trash.mbox"
+python3 sort_emails.py "takeout-001.zip"        # a .zip, .mbox or folder of .eml files
+python3 sort_emails.py mail.mbox --out results   # choose where results go
 ```
 
-This runs entirely on your own computer. Nothing is sent anywhere, and it
-handles about 1,000 emails a second. Results land in `sorted_emails/`:
-
-- **`priority.csv`**: start here. Opens in Excel, Google Sheets or Numbers.
-- **`all_emails.csv`**: every email with its category and the reason it was put there.
-- **`summary.txt`**: how many emails landed in each category.
-- **`by_category/*.mbox`**: one mailbox per category. You can open these in
-  [Thunderbird](https://www.thunderbird.net) (with the ImportExportTools NG add-on)
-  to read and reply to them.
-
-Optional: to route friends and family to **Personal**, create a
-`contacts.txt` with one email address (or whole domain) per line:
+It handles roughly 1,000 emails a second. To route friends and family to
+**Personal**, create a `contacts.txt` with one email address (or whole domain)
+per line:
 
 ```bash
 python3 sort_emails.py mail.mbox --contacts contacts.txt
 ```
 
-## Step 3 (optional): Let Claude sort the leftovers
+## Optional: let Claude sort the leftovers (technical, costs money)
 
 Emails the rules can't place go to **Needs Review**. Claude can read those and
 sort them. This needs an Anthropic API key from
