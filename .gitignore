@@ -1,0 +1,6 @@
+# Never commit real email data
+*.mbox
+*.eml
+sorted_emails/
+contacts.txt
+__pycache__/
