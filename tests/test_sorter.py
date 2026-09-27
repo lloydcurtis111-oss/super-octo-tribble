@@ -59,6 +59,14 @@ class ClassifyTest(unittest.TestCase):
             cat, _conf, reason = S.classify(m)
             self.assertEqual(cat, expected, f"{m['subject']!r} -> {cat} ({reason})")
 
+    def test_platform_name_needs_whole_word(self):
+        # A fan named Demetria is not "Meta"; a fake "Meta Support" still is a scam
+        fan = S.parse(make_email("Demetria Jones <dj@gmail.com>", "Your video made me cry",
+                                 "God bless you and your son").encode())
+        self.assertEqual(S.classify(fan)[0], "Fan Mail")
+        fake = S.parse(make_email("Meta Support <help@meta-alerts.co>", "hello", "hi").encode())
+        self.assertEqual(S.classify(fake)[0], "Possible Scam")
+
     def test_contacts_are_personal(self):
         m = S.parse(SAMPLES[-1][1].encode())
         self.assertEqual(S.classify(m, frozenset({"bob@example.org"}))[0], "Personal")
@@ -169,6 +177,29 @@ class RepliesTest(unittest.TestCase):
             sara = next(e for e in emails if e["subject"].startswith("Sponsorship <"))
             self.assertEqual(sara["to"], "deals@brand.com")  # Reply-To wins over From
             self.assertTrue(sara["draft"].startswith("Hi Sara,"))
+            # saved ticks are namespaced per email file
+            self.assertIn("const KEY = 'replies:' + \"" + S._page_key(mbox) + "\"", html)
+
+    def test_page_key_differs_per_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            a, b = os.path.join(d, "a.mbox"), os.path.join(d, "b.mbox")
+            open(a, "w").write(SAMPLES[0][1])
+            open(b, "w").write(SAMPLES[1][1])
+            self.assertNotEqual(S._page_key(a), S._page_key(b))
+            self.assertEqual(S._page_key(a), S._page_key(a))
+
+    def test_fan_mail_capped(self):
+        fan = SAMPLES[8][1]
+        self.assertEqual(SAMPLES[8][0], "Fan Mail")
+        with tempfile.TemporaryDirectory() as d:
+            mbox = os.path.join(d, "fans.mbox")
+            with open(mbox, "w") as f:
+                f.write(fan * 3500)
+            counts, _ = S.run(mbox, os.path.join(d, "out"), split=False)
+            self.assertEqual(counts["Fan Mail"], 3500)
+            html = open(os.path.join(d, "out", "replies.html"), encoding="utf-8").read()
+            data = html.split('id="data">', 1)[1].split("</script>", 1)[0]
+            self.assertEqual(len(json.loads(data)), replies.PAGE_CATEGORIES["Fan Mail"])
 
 
 if __name__ == "__main__":

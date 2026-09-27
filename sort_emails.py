@@ -21,6 +21,7 @@ Only uses the Python standard library -- no installs needed for this step.
 
 import argparse
 import csv
+import hashlib
 import email
 import email.policy
 import os
@@ -70,8 +71,9 @@ def iter_zip(path):
     with zipfile.ZipFile(path) as zf:
         members = sorted(n for n in zf.namelist() if n.lower().endswith(".mbox"))
         if not members:
-            raise ValueError("This zip file has no .mbox email file inside. "
-                             "Make sure the Takeout export included Mail.")
+            raise ValueError("This zip file has no emails inside. If Google gave you more than one "
+                             "zip file, try the other one(s). Otherwise make sure the Takeout "
+                             "export included Mail.")
         n = 0
         for member in members:
             with zf.open(member) as f:
@@ -184,6 +186,8 @@ def _compile(keyword):
     return re.compile(prefix + re.escape(keyword) + suffix, re.IGNORECASE)
 
 
+_PLATFORM_NAME_RX = re.compile(r"\b(?:" + "|".join(re.escape(p) for p in C.PLATFORM_NAMES) + r")\b", re.IGNORECASE)
+
 _RULES = {
     cat: [(weight, _compile(kw)) for weight, kws in levels.items() for kw in kws]
     for cat, levels in C.KEYWORDS.items()
@@ -216,7 +220,7 @@ def classify(m, contacts=frozenset()):
         return "Personal", "high", "sender is in contacts list"
 
     is_platform = _domain_in(domain, C.PLATFORM_DOMAINS)
-    claims_platform = any(p in name for p in C.PLATFORM_NAMES)
+    claims_platform = bool(_PLATFORM_NAME_RX.search(name))
     if claims_platform and not is_platform:
         return "Possible Scam", "high", f"sender name '{m['from_name']}' but domain is {domain or 'unknown'}"
     if "spam" in labels:
@@ -297,6 +301,12 @@ def write_priority(out_dir, rows):
         w.writerows(rows)
 
 
+def _page_key(source):
+    """Stable ID for this email file, so reply-page ticks don't leak between inboxes."""
+    size = os.path.getsize(source) if os.path.isfile(source) else 0
+    return hashlib.sha1(f"{os.path.basename(source)}|{size}".encode()).hexdigest()[:12]
+
+
 def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
     """Sort every email in `source` into `out`. Returns (counts, summary_text).
 
@@ -312,6 +322,7 @@ def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
     counts = Counter()
     priority = []
     reply_items = []
+    capped = {c: [] for c, limit in replies.PAGE_CATEGORIES.items() if limit is not None}
     start = time.time()
     # utf-8-sig so Excel shows names and emoji correctly when double-clicked
     with open(os.path.join(out, "all_emails.csv"), "w", newline="", encoding="utf-8-sig") as f:
@@ -336,7 +347,15 @@ def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
             if cat in C.PRIORITY_CATEGORIES:
                 priority.append(row)
             if cat in replies.PAGE_CATEGORIES:
-                reply_items.append({**row, "reply_to": m.get("reply_to", ""), "snippet": m["body"][:600]})
+                item = {**row, "reply_to": m.get("reply_to", ""), "snippet": m["body"][:600]}
+                limit = replies.PAGE_CATEGORIES[cat]
+                if limit is None:
+                    reply_items.append(item)
+                else:
+                    # Only the newest few are shown, so trim now and then to keep memory flat
+                    capped[cat].append(item)
+                    if len(capped[cat]) >= limit * 10:
+                        capped[cat] = sorted(capped[cat], key=lambda r: r["date"], reverse=True)[:limit]
             if split:
                 if cat not in boxes:
                     boxes[cat] = open(os.path.join(split_dir, safe_filename(cat)), "wb")
@@ -349,7 +368,9 @@ def run(source, out, contacts=frozenset(), ai=None, split=True, progress=None):
     for fh in boxes.values():
         fh.close()
     write_priority(out, priority)
-    replies.write_page(out, reply_items)
+    for items in capped.values():
+        reply_items += items
+    replies.write_page(out, reply_items, key=_page_key(source))
     summary = write_summary(out, counts, sum(counts.values()), time.time() - start)
     return counts, summary
 

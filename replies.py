@@ -129,8 +129,12 @@ def collect(items):
     return chosen
 
 
-def write_page(out_dir, items):
-    """Write replies.html into out_dir and return its path."""
+def write_page(out_dir, items, key=""):
+    """Write replies.html into out_dir and return its path.
+
+    key identifies the email file, so edits and "Replied" ticks saved in the
+    browser for one inbox never show up on another inbox's page.
+    """
     emails = [
         {
             "id": it["id"],
@@ -151,7 +155,7 @@ def write_page(out_dir, items):
     )
     path = os.path.join(out_dir, "replies.html")
     with open(path, "w", encoding="utf-8") as f:
-        f.write(PAGE.replace("{{TABS}}", tabs).replace("{{DATA}}", data))
+        f.write(PAGE.replace("{{TABS}}", tabs).replace("{{KEY}}", json.dumps(key)).replace("{{DATA}}", data))
     return path
 
 
@@ -228,10 +232,11 @@ PAGE = """<!doctype html>
 <script type="application/json" id="data">{{DATA}}</script>
 <script>
 const EMAILS = JSON.parse(document.getElementById('data').textContent);
+const KEY = 'replies:' + {{KEY}} + ':';
 const PAGE = 40;
 const store = {
-  get(k, d) { try { const v = localStorage.getItem('replies:' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem('replies:' + k, JSON.stringify(v)); } catch (e) {} },
+  get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) {} },
 };
 let cat = '', shown = PAGE;
 const done = new Set(store.get('done', []));

@@ -1,16 +1,21 @@
 @echo off
 rem Double-click this file to open Email Sorter.
+rem Keep this black window open while the sorter runs. If something goes
+rem wrong, the error appears here: take a screenshot of it.
 cd /d "%~dp0"
+title Email Sorter
 
-where pyw >nul 2>nul
+where py >nul 2>nul
 if %errorlevel%==0 (
-    start "" pyw -3 email_sorter_app.py
-    exit /b
+    echo Starting Email Sorter...
+    py -3 email_sorter_app.py
+    goto :done
 )
-where pythonw >nul 2>nul
+where python >nul 2>nul
 if %errorlevel%==0 (
-    start "" pythonw email_sorter_app.py
-    exit /b
+    echo Starting Email Sorter...
+    python email_sorter_app.py
+    goto :done
 )
 
 echo.
@@ -23,3 +28,11 @@ echo  3. When it finishes, double-click "Start (Windows)" again.
 echo.
 start https://www.python.org/downloads/
 pause
+exit /b
+
+:done
+if errorlevel 1 (
+    echo.
+    echo  Something went wrong. Please take a screenshot of this window.
+    pause
+)

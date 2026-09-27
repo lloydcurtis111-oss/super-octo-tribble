@@ -43,9 +43,15 @@ to find, like the Desktop.
 
 ### 4. Sort!
 1. Open the Email Sorter folder and double-click:
-   - **Windows:** `Start (Windows)`
-   - **Mac:** `Start (Mac)`. The first time, macOS may say it's from an
-     "unidentified developer". If it does, **right-click** it, choose **Open**, then click **Open** again.
+   - **Windows:** `Start (Windows)`. Leave the black window that opens
+     alongside it open. If anything goes wrong, the error shows up there.
+   - **Mac:** `Start (Mac)`. The first time, macOS may block it because it's
+     from an "unidentified developer". If it does:
+     1. Click **Done** (or **OK**) on the warning.
+     2. Open **System Settings**, go to **Privacy & Security**, and scroll to the bottom.
+     3. Click **Open Anyway** next to "Start (Mac)", then confirm with **Open Anyway** again.
+
+     On older Macs you can instead **right-click** the file, choose **Open**, and click **Open**.
 2. Click **Choose file...** and pick the Google Takeout `.zip` from step 1.
 3. Click **Sort my emails**. A big inbox takes a few minutes.
 4. When it's done, the **Important Emails** page opens in your web browser (see step 5).
