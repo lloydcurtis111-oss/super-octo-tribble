@@ -1,0 +1,1189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email Sorter</title>
+<!-- Built by build_web.py from web/app.html + web/sorter_core.js + the rules in
+     categories.py and replies.py. Edit those, then run: python3 build_web.py -->
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --text:#1c1c1c; --muted:#6b6b6b; --line:#e2e2de;
+          --accent:#1a73e8; --accent-text:#fff; --soft:#eef3fd; --warn:#fff6e0; --bad:#fdecea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161616; --card:#222; --text:#eee; --muted:#a0a0a0; --line:#353535;
+            --accent:#8ab4f8; --accent-text:#10213d; --soft:#1e2a3d; --warn:#3a2f14; --bad:#3d1f1c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 30px; }
+  h2 { margin: 0 0 10px; font-size: 19px; }
+  .muted { color: var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin:16px 0; }
+  ol { margin: 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .btn { display:inline-block; background:var(--accent); color:var(--accent-text); border:0; border-radius:8px;
+         padding:11px 20px; font-size:16px; font-weight:600; cursor:pointer; text-decoration:none; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn.secondary { background:transparent; color:var(--text); border:1px solid var(--line); font-weight:500; }
+  .btn.big { font-size:18px; padding:14px 28px; }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:26px 16px; text-align:center; cursor:pointer; }
+  .drop.over { border-color:var(--accent); background:var(--soft); }
+  .drop .file { font-weight:600; margin-top:10px; overflow-wrap:anywhere; }
+  label.field { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:14px; font-size:15px; }
+  input[type=text] { border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:8px;
+         padding:8px 10px; font-size:15px; min-width:200px; }
+  .bar { height:12px; background:var(--line); border-radius:99px; overflow:hidden; margin:12px 0 8px; }
+  .bar > div { height:100%; width:0; background:var(--accent); transition: width .3s; }
+  .error { background:var(--bad); border-radius:10px; padding:12px 14px; margin-top:12px; }
+  .privacy { background:var(--warn); border-radius:10px; padding:10px 14px; font-size:15px; }
+  .counts { display:grid; grid-template-columns: max-content 1fr; gap:2px 14px; margin: 8px 0 16px; }
+  .counts .n { text-align:right; font-variant-numeric: tabular-nums; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; }
+  iframe { width:100%; height:85vh; border:1px solid var(--line); border-radius:12px; background:var(--bg); margin-top:16px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Email Sorter</h1>
+  <div class="muted">Finds the brand deals, licensing offers and press requests buried in a flooded inbox,
+    and helps you reply to them.</div>
+
+  <div id="setup">
+    <div class="card">
+      <h2>1. Get your email from Google</h2>
+      <ol>
+        <li>Open <a href="https://takeout.google.com" target="_blank" rel="noopener">takeout.google.com</a> and sign in.</li>
+        <li>Click <b>Deselect all</b>, then scroll down and tick <b>Mail</b>.</li>
+        <li>Click <b>Next step</b>, then <b>Create export</b>.</li>
+        <li>Google emails you when it's ready (a few minutes to a day). Download the <b>.zip</b> file. No need to unzip it.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>2. Choose the file and sort</h2>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose your Google Takeout file">
+        <button class="btn secondary" type="button" id="pick">Choose file&hellip;</button>
+        <div class="muted" style="margin-top:8px">or drag the file here &middot; a .zip or .mbox from Google Takeout</div>
+        <div class="file" id="fileName"></div>
+      </div>
+      <input type="file" id="file" accept=".zip,.mbox" hidden>
+      <label class="field">Sign replies as:
+        <input type="text" id="signature" autocomplete="name">
+      </label>
+      <div style="margin-top:16px">
+        <button class="btn big" id="go" disabled>Sort my emails</button>
+      </div>
+      <div id="working" hidden>
+        <div class="bar"><div id="barFill"></div></div>
+        <div id="status" class="muted"></div>
+      </div>
+      <div class="error" id="error" hidden></div>
+    </div>
+
+    <div class="privacy">&#128274; Your emails never leave this computer. Everything happens inside this page,
+      and nothing is uploaded anywhere.</div>
+  </div>
+
+  <div id="results" hidden>
+    <div class="card">
+      <h2 id="doneTitle"></h2>
+      <div class="counts" id="counts"></div>
+      <div class="actions">
+        <button class="btn" id="saveReplies">Save reply page for later</button>
+        <button class="btn secondary" id="dlPriority">Important emails (spreadsheet)</button>
+        <button class="btn secondary" id="dlAll">All emails (spreadsheet)</button>
+        <button class="btn secondary" id="again">Sort another file</button>
+      </div>
+      <div class="muted" style="margin-top:10px; font-size:14px">Tip: click <b>Save reply page for later</b> so you
+        can come back to your replies without sorting again. It saves to your Downloads folder.</div>
+    </div>
+    <iframe id="replies" title="Important emails"></iframe>
+  </div>
+</main>
+
+<script>
+/*
+ * Email Sorter core -- runs entirely in the browser (and in Node for tests).
+ *
+ * This is a JavaScript port of sort_emails.py + replies.py so the sorter can
+ * run on a Chromebook (or any computer) with nothing installed. The rules
+ * themselves are NOT duplicated here: build_web.py copies them out of
+ * categories.py and replies.py when it builds "Email Sorter.html".
+ */
+(function (root) {
+  'use strict';
+
+  const LF = 0x0a;
+  const CR = 0x0d;
+  const MAX_PARSE_BYTES = 256 * 1024; // enough for headers + text; skips big attachments
+  const BODY_CHARS = 3000;
+
+  // ------------------------------------------------------------------------
+  // Reading files: .mbox and Google Takeout .zip, streamed in chunks
+  // ------------------------------------------------------------------------
+
+  async function* streamChunks(readable, onBytes) {
+    const reader = readable.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        if (onBytes) onBytes(value.length);
+        yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  function isFromLine(buf, i, end) {
+    return i + 5 <= end && buf[i] === 0x46 && buf[i + 1] === 0x72 && buf[i + 2] === 0x6f &&
+      buf[i + 3] === 0x6d && buf[i + 4] === 0x20; // "From "
+  }
+
+  /*
+   * Split a byte stream into raw mbox messages. A message starts at a
+   * "From " line that follows a blank line (or starts the file).
+   * Yielded arrays are only valid until the next iteration -- parse them
+   * straight away.
+   */
+  async function* splitMbox(chunks) {
+    let data = new Uint8Array(1 << 20);
+    let len = 0;
+    let start = 0; // start of the current message
+    let scan = 0;  // next position to look for a newline
+
+    for await (const chunk of chunks) {
+      if (len + chunk.length > data.length) {
+        if (start > 0) { // drop bytes of messages already handed out
+          data.copyWithin(0, start, len);
+          len -= start; scan -= start; start = 0;
+        }
+        if (len + chunk.length > data.length) {
+          let cap = data.length;
+          while (cap < len + chunk.length) cap *= 2;
+          const bigger = new Uint8Array(cap);
+          bigger.set(data.subarray(0, len));
+          data = bigger;
+        }
+      }
+      data.set(chunk, len);
+      len += chunk.length;
+
+      for (;;) {
+        const nl = data.indexOf(LF, scan);
+        if (nl === -1 || nl >= len) { scan = len; break; }
+        if (nl + 6 > len) { scan = nl; break; } // need to see the next line's start
+        const blankBefore = (nl - 1 >= start && data[nl - 1] === LF) ||
+          (nl - 2 >= start && data[nl - 1] === CR && data[nl - 2] === LF);
+        if (blankBefore && isFromLine(data, nl + 1, len) && nl + 1 > start) {
+          yield data.subarray(start, nl + 1);
+          start = nl + 1;
+        }
+        scan = nl + 1;
+      }
+    }
+    if (len > start) yield data.subarray(start, len);
+  }
+
+  async function readSlice(file, start, end) {
+    return new Uint8Array(await file.slice(start, end).arrayBuffer());
+  }
+
+  function u16(b, o) { return b[o] | (b[o + 1] << 8); }
+  function u32(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
+  function u64(b, o) { return u32(b, o) + u32(b, o + 4) * 4294967296; }
+
+  function looksLikeZip(head) {
+    return head.length >= 4 && head[0] === 0x50 && head[1] === 0x4b && head[2] === 0x03 && head[3] === 0x04;
+  }
+
+  // List the entries of a zip file (supports Zip64 for exports over 4 GB).
+  async function listZip(file) {
+    const tailLen = Math.min(file.size, 65557);
+    const tail = await readSlice(file, file.size - tailLen, file.size);
+    let eocd = -1;
+    for (let i = tail.length - 22; i >= 0; i--) {
+      if (u32(tail, i) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('This zip file looks damaged. Try downloading it from Google again.');
+    let count = u16(tail, eocd + 10);
+    let cdSize = u32(tail, eocd + 12);
+    let cdOffset = u32(tail, eocd + 16);
+    const loc = eocd - 20;
+    if (loc >= 0 && u32(tail, loc) === 0x07064b50) {
+      const z64Off = u64(tail, loc + 8);
+      const z64 = await readSlice(file, z64Off, z64Off + 56);
+      if (u32(z64, 0) === 0x06064b50) {
+        count = u64(z64, 32);
+        cdSize = u64(z64, 40);
+        cdOffset = u64(z64, 48);
+      }
+    }
+    const cd = await readSlice(file, cdOffset, cdOffset + cdSize);
+    const entries = [];
+    const utf8 = new TextDecoder('utf-8');
+    let p = 0;
+    for (let n = 0; n < count && p + 46 <= cd.length; n++) {
+      if (u32(cd, p) !== 0x02014b50) break;
+      const method = u16(cd, p + 10);
+      let compSize = u32(cd, p + 20);
+      let size = u32(cd, p + 24);
+      const nameLen = u16(cd, p + 28);
+      const extraLen = u16(cd, p + 30);
+      const commentLen = u16(cd, p + 32);
+      let offset = u32(cd, p + 42);
+      const name = utf8.decode(cd.subarray(p + 46, p + 46 + nameLen));
+      let e = p + 46 + nameLen;
+      const extraEnd = e + extraLen;
+      while (e + 4 <= extraEnd) { // Zip64 extra field holds the real sizes
+        const id = u16(cd, e);
+        const sz = u16(cd, e + 2);
+        if (id === 0x0001) {
+          let q = e + 4;
+          if (size === 0xffffffff) { size = u64(cd, q); q += 8; }
+          if (compSize === 0xffffffff) { compSize = u64(cd, q); q += 8; }
+          if (offset === 0xffffffff) { offset = u64(cd, q); q += 8; }
+        }
+        e += 4 + sz;
+      }
+      entries.push({ name, method, compSize, size, offset });
+      p = extraEnd + commentLen;
+    }
+    return entries;
+  }
+
+  function countBytes(readable, onBytes) {
+    if (!onBytes || typeof TransformStream === 'undefined') return readable;
+    return readable.pipeThrough(new TransformStream({
+      transform(chunk, controller) { onBytes(chunk.length); controller.enqueue(chunk); },
+    }));
+  }
+
+  async function zipEntryStream(file, entry, onBytes) {
+    const head = await readSlice(file, entry.offset, entry.offset + 30);
+    if (u32(head, 0) !== 0x04034b50) throw new Error('This zip file looks damaged.');
+    const dataStart = entry.offset + 30 + u16(head, 26) + u16(head, 28);
+    const raw = countBytes(file.slice(dataStart, dataStart + entry.compSize).stream(), onBytes);
+    if (entry.method === 0) return raw;
+    if (entry.method !== 8) throw new Error('This zip file uses a format the sorter cannot read. Unzip it and choose the .mbox file inside.');
+    if (typeof DecompressionStream === 'undefined') {
+      throw new Error('This browser is too old to open zip files. Unzip the file first and choose the .mbox file inside.');
+    }
+    try {
+      return raw.pipeThrough(new DecompressionStream('deflate-raw'));
+    } catch (err) {
+      throw new Error('This browser is too old to open zip files. Unzip the file first and choose the .mbox file inside.');
+    }
+  }
+
+  /*
+   * Yield [messageNumber, rawBytes] for every email in a Takeout .zip or an
+   * .mbox file. onBytes(n) reports progress in bytes of the original file.
+   */
+  async function* iterMessages(file, onBytes) {
+    const head = await readSlice(file, 0, 4);
+    let n = 0;
+    if (looksLikeZip(head)) {
+      const members = (await listZip(file))
+        .filter((e) => e.name.toLowerCase().endsWith('.mbox'))
+        .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+      if (!members.length) {
+        throw new Error('This zip file has no emails inside. If Google gave you more than one zip file, ' +
+          'try the other one(s). Otherwise make sure the Takeout export included Mail.');
+      }
+      for (const entry of members) {
+        const stream = await zipEntryStream(file, entry, onBytes);
+        for await (const raw of splitMbox(streamChunks(stream))) {
+          yield [++n, raw];
+        }
+      }
+    } else {
+      for await (const raw of splitMbox(streamChunks(file.stream(), onBytes))) {
+        yield [++n, raw];
+      }
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // Parsing one email
+  // ------------------------------------------------------------------------
+
+  function binStr(u8) {
+    let s = '';
+    for (let i = 0; i < u8.length; i += 8192) {
+      s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192));
+    }
+    return s;
+  }
+
+  function strBytes(s) {
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i) & 0xff;
+    return out;
+  }
+
+  function decodeText(bytes, charset) {
+    const label = (charset || 'utf-8').trim().replace(/^"|"$/g, '').toLowerCase();
+    try {
+      return new TextDecoder(label).decode(bytes);
+    } catch (err) {
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+  }
+
+  function b64Bytes(s) {
+    let clean = s.replace(/[^A-Za-z0-9+/]/g, '');
+    const rem = clean.length % 4; // restore padding so the last few bytes aren't lost
+    if (rem === 1) clean = clean.slice(0, -1);
+    else if (rem) clean += '='.repeat(4 - rem);
+    try {
+      return strBytes(atob(clean));
+    } catch (err) {
+      return new Uint8Array(0);
+    }
+  }
+
+  function qpBinary(s) {
+    return s.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+  }
+
+  // RFC 2047: =?utf-8?B?...?= and =?iso-8859-1?Q?...?= in headers
+  function decodeWords(value) {
+    if (value.indexOf('=?') === -1) return value;
+    return value
+      .replace(/(\?=)\s+(=\?)/g, '$1$2')
+      .replace(/=\?([^?\s]+)\?([bBqQ])\?([^?\s]*)\?=/g, (m, charset, enc, text) => {
+        const cs = charset.split('*')[0];
+        const bytes = enc.toUpperCase() === 'B'
+          ? b64Bytes(text)
+          : strBytes(qpBinary(text.replace(/_/g, ' ')));
+        return decodeText(bytes, cs);
+      });
+  }
+
+  // Split a binary string entity into {headers, body}. Header names are lowercase.
+  function parseEntity(s) {
+    let end = -1;
+    let bodyStart = s.length;
+    for (let i = s.indexOf('\n'); i !== -1; i = s.indexOf('\n', i + 1)) {
+      if (i === 0 || s[i + 1] === '\n') { end = i; bodyStart = i + 2; break; }
+      if (s[i + 1] === '\r' && s[i + 2] === '\n') { end = i; bodyStart = i + 3; break; }
+    }
+    if (s[0] === '\n') { end = 0; bodyStart = 1; }
+    const headText = decodeText(strBytes(end === -1 ? s : s.slice(0, end)), 'utf-8');
+    const headers = {};
+    const unfolded = headText.replace(/\r?\n[ \t]+/g, ' ').split(/\r?\n/);
+    for (const line of unfolded) {
+      const colon = line.indexOf(':');
+      if (colon <= 0) continue;
+      const name = line.slice(0, colon).trim().toLowerCase();
+      if (!(name in headers)) headers[name] = line.slice(colon + 1).trim();
+    }
+    return { headers, body: end === -1 ? '' : s.slice(bodyStart) };
+  }
+
+  function headerParam(value, name) {
+    const m = new RegExp(';\\s*' + name + '\\s*=\\s*(?:"([^"]*)"|([^;\\s]*))', 'i').exec(value || '');
+    return m ? (m[1] !== undefined ? m[1] : m[2]) : '';
+  }
+
+  function splitMultipart(body, boundary) {
+    const delim = '--' + boundary;
+    const parts = [];
+    let pos = body.startsWith(delim) ? 0 : body.indexOf('\n' + delim);
+    if (pos === -1) return parts;
+    if (pos > 0 || body[0] === '\n') pos += 1;
+    for (;;) {
+      if (body.startsWith(delim + '--', pos)) break;
+      const lineEnd = body.indexOf('\n', pos);
+      if (lineEnd === -1) break;
+      const next = body.indexOf('\n' + delim, lineEnd);
+      let part = body.slice(lineEnd + 1, next === -1 ? body.length : next);
+      if (part.endsWith('\r')) part = part.slice(0, -1);
+      parts.push(part);
+      if (next === -1) break;
+      pos = next + 1;
+    }
+    return parts;
+  }
+
+  function decodeBody(headers, body) {
+    const cte = (headers['content-transfer-encoding'] || '').trim().toLowerCase();
+    let bytes;
+    if (cte === 'base64') bytes = b64Bytes(body.slice(0, 40000));
+    else if (cte === 'quoted-printable') bytes = strBytes(qpBinary(body.slice(0, 40000)));
+    else bytes = strBytes(body.slice(0, 40000));
+    return decodeText(bytes, headerParam(headers['content-type'], 'charset'));
+  }
+
+  const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
+  function htmlToText(html) {
+    return html
+      .replace(/<(script|style)\b[\s\S]*?<\/\1\s*>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+\d*);/gi, (m, e) => {
+        if (e[0] === '#') {
+          const code = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+          try { return String.fromCodePoint(code); } catch (err) { return ' '; }
+        }
+        return ENTITIES[e.toLowerCase()] !== undefined ? ENTITIES[e.toLowerCase()] : m;
+      });
+  }
+
+  function findText(entity, depth, found) {
+    const ctypeHeader = entity.headers['content-type'] || 'text/plain';
+    const ctype = ctypeHeader.split(';')[0].trim().toLowerCase();
+    const disposition = (entity.headers['content-disposition'] || '').trim().toLowerCase();
+    if (ctype.startsWith('multipart/')) {
+      const boundary = headerParam(ctypeHeader, 'boundary');
+      if (!boundary || depth > 6) return;
+      for (const part of splitMultipart(entity.body, boundary)) {
+        findText(parseEntity(part), depth + 1, found);
+        if (found.plain !== null) return;
+      }
+      return;
+    }
+    if (disposition.startsWith('attachment')) return;
+    if (ctype === 'text/plain' && found.plain === null) found.plain = decodeBody(entity.headers, entity.body);
+    else if (ctype === 'text/html' && found.html === null) found.html = decodeBody(entity.headers, entity.body);
+  }
+
+  function parseAddr(value) {
+    const v = (value || '').trim();
+    let name = '';
+    let addr = v;
+    const lt = v.lastIndexOf('<');
+    const gt = lt === -1 ? -1 : v.indexOf('>', lt);
+    if (lt !== -1 && gt > lt) {
+      name = v.slice(0, lt).trim();
+      addr = v.slice(lt + 1, gt).trim();
+    } else {
+      const m = /^([^\s(]+)\s*\((.*)\)\s*$/.exec(v);
+      if (m) { addr = m[1]; name = m[2]; }
+    }
+    name = name.replace(/^"([\s\S]*)"$/, '$1').replace(/\\(.)/g, '$1').trim();
+    return { name, addr: addr.replace(/^mailto:/i, '').trim() };
+  }
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function formatDate(value) {
+    if (!value) return '';
+    const d = new Date(value.replace(/\s*\([^)]*\)\s*$/, ''));
+    if (isNaN(d.getTime())) return '';
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' +
+      pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+
+  function parse(raw) {
+    let s = binStr(raw.subarray(0, MAX_PARSE_BYTES));
+    if (s.startsWith('From ')) {
+      const nl = s.indexOf('\n');
+      s = nl === -1 ? '' : s.slice(nl + 1);
+    }
+    const entity = parseEntity(s);
+    const h = entity.headers;
+    const from = parseAddr(decodeWords(h.from || ''));
+    const addr = from.addr.toLowerCase();
+    let body = '';
+    try {
+      const found = { plain: null, html: null };
+      findText(entity, 0, found);
+      const text = found.plain !== null ? found.plain : htmlToText(found.html || '');
+      body = text.replace(/\s+/g, ' ').trim().slice(0, BODY_CHARS);
+    } catch (err) {
+      body = '';
+    }
+    const precedence = (h.precedence || '').trim().toLowerCase();
+    return {
+      date: formatDate(h.date || ''),
+      from_name: from.name,
+      from_addr: addr,
+      reply_to: parseAddr(decodeWords(h['reply-to'] || '')).addr.toLowerCase(),
+      domain: addr.indexOf('@') !== -1 ? addr.slice(addr.lastIndexOf('@') + 1) : '',
+      subject: decodeWords(h.subject || '').replace(/\s+/g, ' ').trim(),
+      labels: decodeWords(h['x-gmail-labels'] || ''),
+      bulk: Boolean(h['list-unsubscribe']) || ['bulk', 'list', 'junk'].indexOf(precedence) !== -1,
+      body,
+    };
+  }
+
+  // ------------------------------------------------------------------------
+  // Classifying (same logic as sort_emails.classify)
+  // ------------------------------------------------------------------------
+
+  function escapeRx(s) { return s.replace(/[.*+?^${}()|[\]\\\/-]/g, '\\$&'); }
+  function isAlnum(ch) { return /^[A-Za-z0-9]$/.test(ch || ''); }
+
+  function compileKeyword(keyword) {
+    const wildcard = keyword.endsWith('*');
+    const kw = keyword.replace(/\*+$/, '');
+    const prefix = isAlnum(kw[0]) ? '\\b' : '';
+    const suffix = isAlnum(kw[kw.length - 1]) && !wildcard ? '\\b' : '';
+    return new RegExp(prefix + escapeRx(kw) + suffix, 'i');
+  }
+
+  function createSorter(RULES) {
+    const rules = RULES.keyword_order.map((cat) => {
+      const levels = RULES.keywords[cat];
+      const list = [];
+      for (const weight of Object.keys(levels)) {
+        for (const kw of levels[weight]) list.push([Number(weight), compileKeyword(kw)]);
+      }
+      return [cat, list];
+    });
+    const platformNameRx = new RegExp('\\b(?:' + RULES.platform_names.map(escapeRx).join('|') + ')\\b', 'i');
+    const priority = new Set(RULES.priority_categories);
+    const pageLimits = new Map(RULES.page_categories);
+    const generic = new Set(RULES.generic_name_words);
+
+    function domainIn(domain, domains) {
+      return domains.some((d) => domain === d || domain.endsWith('.' + d));
+    }
+
+    function score(subject, body) {
+      const scores = new Map();
+      const add = (cat, n) => scores.set(cat, (scores.get(cat) || 0) + n);
+      for (const [cat, list] of rules) {
+        for (const [weight, rx] of list) {
+          if (rx.test(subject)) add(cat, weight * 2);
+          if (rx.test(body)) add(cat, weight);
+        }
+      }
+      return { scores, add };
+    }
+
+    function classify(m) {
+      const labels = m.labels.split(',').map((l) => l.trim().toLowerCase());
+      const domain = m.domain;
+      if (labels.indexOf('sent') !== -1) return ['Sent', 'high', "Gmail 'Sent' label"];
+
+      const isPlatform = domainIn(domain, RULES.platform_domains);
+      const claimsPlatform = platformNameRx.test(m.from_name);
+      if (claimsPlatform && !isPlatform) {
+        return ['Possible Scam', 'high', "sender name '" + m.from_name + "' but domain is " + (domain || 'unknown')];
+      }
+      if (labels.indexOf('spam') !== -1) return ['Possible Scam', 'high', 'Gmail marked it as spam'];
+      if (isPlatform) return ['Social Media Notifications', 'high', 'from ' + domain];
+      if (domainIn(domain, RULES.licensing_domains)) {
+        return ['Video Licensing & Rights', 'high', 'from licensing company ' + domain];
+      }
+
+      const { scores, add } = score(m.subject, m.body);
+      if (m.bulk) add('Newsletters & Promotions', 4);
+      if (labels.indexOf('category promotions') !== -1 || labels.indexOf('category updates') !== -1) {
+        add('Newsletters & Promotions', 3);
+      }
+      if (labels.indexOf('category social') !== -1) add('Social Media Notifications', 3);
+
+      if (!scores.size) return ['Needs Review', 'low', 'no matching rules'];
+      const ranked = Array.from(scores.entries()).sort((a, b) => b[1] - a[1]).slice(0, 2);
+      const [best, top] = ranked[0];
+      const runnerUp = ranked.length > 1 ? ranked[1][1] : 0;
+      if (top < RULES.min_score) return ['Needs Review', 'low', 'weak match (' + best + ', score ' + top + ')'];
+      const confidence = top >= 6 && top >= runnerUp * 2 ? 'high' : 'low';
+      return [best, confidence, 'keyword score ' + top + (runnerUp ? ' (next: ' + ranked[1][0] + ' ' + runnerUp + ')' : '')];
+    }
+
+    // -- replies (same as replies.py) --------------------------------------
+    function firstName(displayName) {
+      const words = (displayName || '').replace(/"/g, '').match(/[A-Za-z'\-]+/g);
+      if (!words || words.some((w) => generic.has(w.toLowerCase()))) return 'there';
+      const word = words[0];
+      if (/^[A-Za-z][A-Za-z'\-]{1,20}$/.test(word)) return word[0].toUpperCase() + word.slice(1).toLowerCase();
+      return 'there';
+    }
+
+    function draftReply(category, displayName, signature) {
+      const template = RULES.templates[category];
+      if (!template) return '';
+      return template.replace(/\{name\}/g, firstName(displayName)).replace(/\{signature\}/g, signature);
+    }
+
+    function replySubject(subject) {
+      subject = subject || '';
+      return /^re:/i.test(subject) ? subject : ('Re: ' + subject).trim();
+    }
+
+    function byDateDesc(a, b) { return a.date < b.date ? 1 : a.date > b.date ? -1 : 0; }
+
+    function collect(items) {
+      const byCat = new Map(RULES.page_categories.map(([c]) => [c, []]));
+      for (const it of items) if (byCat.has(it.category)) byCat.get(it.category).push(it);
+      let chosen = [];
+      for (const [cat, limit] of RULES.page_categories) {
+        const rows = byCat.get(cat).slice().sort(byDateDesc);
+        chosen = chosen.concat(limit ? rows.slice(0, limit) : rows);
+      }
+      return chosen;
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;').replace(/'/g, '&#x27;');
+    }
+
+    function replyPageData(items, signature) {
+      return collect(items).map((it) => ({
+        id: it.id,
+        category: it.category,
+        date: it.date,
+        from: it.from_name || it.from_addr,
+        to: it.reply_to || it.from_addr,
+        subject: it.subject,
+        reply_subject: replySubject(it.subject),
+        preview: it.snippet || '',
+        draft: draftReply(it.category, it.from_name, signature),
+      }));
+    }
+
+    function replyPageHtml(items, key, signature) {
+      const data = JSON.stringify(replyPageData(items, signature)).replace(/<\//g, '<\\/');
+      const tabs = RULES.page_categories
+        .map(([c]) => '<button class="tab" data-cat="' + escHtml(c) + '">' + escHtml(c) + '</button>').join('');
+      return RULES.reply_page
+        .replace('{{TABS}}', () => tabs)
+        .replace('{{KEY}}', () => JSON.stringify(key))
+        .replace('{{DATA}}', () => data);
+    }
+
+    // -- the whole run -----------------------------------------------------
+    const FIELDS = ['id', 'date', 'category', 'confidence', 'from_name', 'from_addr', 'subject', 'reason', 'preview'];
+
+    function csvCell(v) {
+      const s = String(v === undefined || v === null ? '' : v);
+      return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    }
+    function csvRow(row) { return FIELDS.map((f) => csvCell(row[f])).join(',') + '\r\n'; }
+
+    /*
+     * Sort every email in `file`. progress({emails, fraction}) is called now
+     * and then. Returns counts, CSV text, and the reply page items.
+     */
+    async function run(file, progress) {
+      const counts = new Map(RULES.categories.map((c) => [c, 0]));
+      const allCsv = ['﻿' + FIELDS.join(',') + '\r\n'];
+      const priorityRows = [];
+      const replyItems = [];
+      const capped = new Map(RULES.page_categories.filter(([, l]) => l).map(([c]) => [c, []]));
+      let bytesDone = 0;
+      let lastReport = 0;
+      const onBytes = (n) => { bytesDone += n; };
+      let n = 0;
+
+      for await (const [id, raw] of iterMessages(file, onBytes)) {
+        n = id;
+        let m;
+        let cat;
+        let conf;
+        let reason;
+        try {
+          m = parse(raw);
+          [cat, conf, reason] = classify(m);
+        } catch (err) {
+          m = { date: '', from_name: '', from_addr: '', subject: '', body: '', reply_to: '' };
+          [cat, conf, reason] = ['Needs Review', 'low', 'could not parse: ' + err.message];
+        }
+        const row = {
+          id, date: m.date, category: cat, confidence: conf, from_name: m.from_name,
+          from_addr: m.from_addr, subject: m.subject, reason, preview: m.body.slice(0, 200),
+        };
+        allCsv.push(csvRow(row));
+        counts.set(cat, (counts.get(cat) || 0) + 1);
+        if (priority.has(cat)) priorityRows.push(row);
+        if (pageLimits.has(cat)) {
+          const item = Object.assign({}, row, { reply_to: m.reply_to, snippet: m.body.slice(0, 600) });
+          const limit = pageLimits.get(cat);
+          if (!limit) {
+            replyItems.push(item);
+          } else {
+            const list = capped.get(cat);
+            list.push(item);
+            if (list.length >= limit * 10) capped.set(cat, list.sort(byDateDesc).slice(0, limit));
+          }
+        }
+        if (progress && id - lastReport >= 500) {
+          lastReport = id;
+          progress({ emails: id, fraction: file.size ? Math.min(1, bytesDone / file.size) : 0 });
+          await new Promise((r) => setTimeout(r, 0)); // let the page repaint
+        }
+      }
+      for (const list of capped.values()) for (const it of list) replyItems.push(it);
+      priorityRows.sort(byDateDesc);
+      const priorityCsv = ['﻿' + FIELDS.join(',') + '\r\n'].concat(priorityRows.map(csvRow));
+      if (progress) progress({ emails: n, fraction: 1 });
+      return { total: n, counts, allCsv, priorityCsv, replyItems };
+    }
+
+    return { parse, classify, firstName, draftReply, replySubject, collect, replyPageData, replyPageHtml, run };
+  }
+
+  // Short stable ID for a file, so saved reply-page ticks stay per inbox.
+  function fileKey(name, size) {
+    let h = 0x811c9dc5;
+    const s = name + '|' + size;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return 'web' + h.toString(16);
+  }
+
+  const api = { createSorter, iterMessages, splitMbox, streamChunks, listZip, fileKey, parseAddr, decodeWords };
+  root.EmailSorterCore = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+</script>
+<script>
+const RULES = {
+ "categories": [
+  "Business & Brand Deals",
+  "Video Licensing & Rights",
+  "Media & Press",
+  "Management & Agencies",
+  "Fan Mail",
+  "Possible Scam",
+  "Social Media Notifications",
+  "Newsletters & Promotions",
+  "Personal",
+  "Sent",
+  "Needs Review"
+ ],
+ "priority_categories": [
+  "Business & Brand Deals",
+  "Video Licensing & Rights",
+  "Media & Press",
+  "Management & Agencies"
+ ],
+ "descriptions": {
+  "Business & Brand Deals": "Sponsorships, brand partnerships, paid promotions, collabs, product seeding, speaking or appearance offers.",
+  "Video Licensing & Rights": "Requests to license, feature, repost, or buy rights to the viral video (Jukin, ViralHog, Storyful, Newsflare, TV shows, compilation channels).",
+  "Media & Press": "Journalists, news outlets, TV/radio producers, podcasts asking for interviews, quotes, or comment.",
+  "Management & Agencies": "Talent managers, agents, MCNs, and creator agencies offering representation.",
+  "Fan Mail": "Messages from viewers reacting to the video, sharing their story, or sending support.",
+  "Possible Scam": "Phishing, fake 'Facebook/Meta' security or verification notices, fake copyright strikes, crypto/gift-card/money requests. Do not click links.",
+  "Social Media Notifications": "Automated notifications from Facebook, Instagram, TikTok, YouTube, etc.",
+  "Newsletters & Promotions": "Marketing emails, newsletters, receipts and other bulk mail.",
+  "Personal": "Friends, family and known contacts.",
+  "Sent": "Emails Anthony sent himself.",
+  "Needs Review": "Could not be confidently sorted -- review manually or run AI mode."
+ },
+ "platform_domains": [
+  "accounts.google.com",
+  "facebook.com",
+  "facebookmail.com",
+  "google.com",
+  "instagram.com",
+  "linkedin.com",
+  "linkedinmail.com",
+  "mail.instagram.com",
+  "meta.com",
+  "metamail.com",
+  "snapchat.com",
+  "threads.net",
+  "tiktok.com",
+  "tiktokv.com",
+  "twitter.com",
+  "x.com",
+  "youtube.com"
+ ],
+ "platform_names": [
+  "facebook",
+  "meta",
+  "instagram",
+  "tiktok",
+  "youtube",
+  "copyright team",
+  "page support"
+ ],
+ "licensing_domains": [
+  "caters.co.uk",
+  "collab.com",
+  "dodo.com",
+  "jukin.com",
+  "jukinmedia.com",
+  "ladbible.com",
+  "newsflare.com",
+  "rumble.com",
+  "storyful.com",
+  "swns.com",
+  "thedodo.com",
+  "unilad.com",
+  "viralbe.com",
+  "viralhog.com",
+  "whistle.com"
+ ],
+ "keyword_order": [
+  "Possible Scam",
+  "Video Licensing & Rights",
+  "Media & Press",
+  "Management & Agencies",
+  "Business & Brand Deals",
+  "Fan Mail",
+  "Newsletters & Promotions"
+ ],
+ "keywords": {
+  "Possible Scam": {
+   "3": [
+    "verification badge",
+    "blue badge",
+    "blue tick",
+    "get verified",
+    "your page will be deleted",
+    "your page will be disabled",
+    "account will be disabled",
+    "account will be deleted",
+    "account has been restricted",
+    "appeal within 24 hours",
+    "appeal within 48 hours",
+    "confirm your identity",
+    "gift card",
+    "western union",
+    "moneygram",
+    "bitcoin",
+    "crypto investment",
+    "claim your prize",
+    "you have won",
+    "lottery",
+    "wire transfer fee",
+    "send your password",
+    "login details",
+    "seed phrase",
+    "processing fee",
+    "unclaimed funds",
+    "inheritance",
+    "next of kin"
+   ],
+   "2": [
+    "violated our community standards",
+    "copyright infringement notice",
+    "urgent action required",
+    "click here to appeal"
+   ]
+  },
+  "Video Licensing & Rights": {
+   "3": [
+    "license your video",
+    "licensing your video",
+    "license the video",
+    "licensing request",
+    "licensing agreement",
+    "exclusive rights",
+    "non-exclusive",
+    "usage rights",
+    "rights to your video",
+    "rights to the video",
+    "permission to use your video",
+    "permission to share your video",
+    "permission to feature",
+    "feature your video",
+    "use your video",
+    "use your clip",
+    "repost your video",
+    "footage",
+    "clip license"
+   ],
+   "2": [
+    "licens*",
+    "royalt*",
+    "revenue share",
+    "compilation",
+    "viral video",
+    "rights management"
+   ]
+  },
+  "Media & Press": {
+   "3": [
+    "interview request",
+    "request for comment",
+    "for comment",
+    "press inquiry",
+    "media inquiry",
+    "journalist",
+    "reporter",
+    "producer at",
+    "segment",
+    "on air",
+    "on-air",
+    "podcast guest",
+    "be a guest",
+    "our show",
+    "news story",
+    "writing a story",
+    "writing an article",
+    "live on",
+    "tv appearance"
+   ],
+   "2": [
+    "interview*",
+    "podcast*",
+    "newsroom",
+    "news",
+    "morning show",
+    "radio",
+    "magazine",
+    "press"
+   ]
+  },
+  "Management & Agencies": {
+   "3": [
+    "talent management",
+    "represent you",
+    "representation",
+    "talent agency",
+    "management company",
+    "sign with us",
+    "creator management",
+    "mcn",
+    "grow your page",
+    "monetize your page",
+    "manage your page"
+   ],
+   "2": [
+    "manager",
+    "agency",
+    "talent",
+    "management"
+   ]
+  },
+  "Business & Brand Deals": {
+   "3": [
+    "brand deal",
+    "sponsorship",
+    "sponsored post",
+    "paid partnership",
+    "paid collaboration",
+    "brand partnership",
+    "partner with you",
+    "collaborate with you",
+    "collab*",
+    "ambassador",
+    "influencer campaign",
+    "campaign brief",
+    "rate card",
+    "your rates",
+    "media kit",
+    "promote our",
+    "gifted",
+    "send you our product",
+    "speaking engagement",
+    "appearance fee",
+    "booking",
+    "endorsement"
+   ],
+   "2": [
+    "partnership*",
+    "campaign*",
+    "budget",
+    "compensation",
+    "proposal",
+    "opportunit*",
+    "sponsor*",
+    "brand*"
+   ]
+  },
+  "Fan Mail": {
+   "3": [
+    "love your video",
+    "loved your video",
+    "saw your video",
+    "watched your video",
+    "made me cry",
+    "brought tears",
+    "your son",
+    "you and your son",
+    "such a good dad",
+    "great dad",
+    "amazing father",
+    "god bless",
+    "so proud of you",
+    "you inspired",
+    "inspired me",
+    "beautiful video",
+    "touched my heart",
+    "biggest fan",
+    "big fan"
+   ],
+   "2": [
+    "your video",
+    "adorable",
+    "so sweet",
+    "heartwarming",
+    "blessed",
+    "congrat*"
+   ]
+  },
+  "Newsletters & Promotions": {
+   "2": [
+    "unsubscribe",
+    "view in browser",
+    "newsletter",
+    "% off",
+    "sale ends",
+    "shop now",
+    "order confirmation",
+    "receipt"
+   ]
+  }
+ },
+ "min_score": 3,
+ "page_categories": [
+  [
+   "Business & Brand Deals",
+   null
+  ],
+  [
+   "Video Licensing & Rights",
+   null
+  ],
+  [
+   "Media & Press",
+   null
+  ],
+  [
+   "Management & Agencies",
+   null
+  ],
+  [
+   "Fan Mail",
+   300
+  ]
+ ],
+ "templates": {
+  "Business & Brand Deals": "Hi {name},\n\nThanks so much for reaching out! I'm interested in hearing more.\n\nCould you send over the details?\n- What you'd like me to create or post, and on which platforms\n- Timeline and deadlines\n- Budget / compensation\n- How long you'd want to use the content, and where\n\nLooking forward to it.\n\n{signature}",
+  "Video Licensing & Rights": "Hi {name},\n\nThanks for your interest in the video.\n\nBefore I agree to anything, could you send the full terms in writing?\n- Exclusive or non-exclusive\n- Upfront fee and/or revenue share (and the percentage)\n- Where it will be used, and for how long\n\nI'm not signing any exclusive agreements at this time, and I'll have the terms reviewed before signing.\n\n{signature}",
+  "Media & Press": "Hi {name},\n\nThanks for reaching out, I'd be happy to talk.\n\nCould you let me know:\n- The outlet or show, and when it would run\n- Your deadline\n- Whether it's by phone, video, or in person\n\n{signature}",
+  "Management & Agencies": "Hi {name},\n\nThanks for reaching out.\n\nCould you send some information about your company?\n- Creators you currently represent\n- Your commission and contract length\n- What you would do for me in the first 90 days\n\n{signature}",
+  "Fan Mail": "Hi {name},\n\nThank you so much for your kind message. It really means a lot to me and my son!\n\n{signature}"
+ },
+ "generic_name_words": [
+  "admin",
+  "booking",
+  "customer",
+  "desk",
+  "editorial",
+  "hello",
+  "hi",
+  "inc",
+  "info",
+  "licensing",
+  "llc",
+  "ltd",
+  "marketing",
+  "media",
+  "news",
+  "no",
+  "noreply",
+  "notifications",
+  "office",
+  "partners",
+  "partnerships",
+  "rights",
+  "sales",
+  "service",
+  "support",
+  "team",
+  "the"
+ ],
+ "signature": "Anthony Taylor",
+ "reply_page": "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Important Emails<\/title>\n<style>\n  :root { --bg:#f6f6f4; --card:#fff; --text:#1c1c1c; --muted:#6b6b6b; --line:#e2e2de;\n          --accent:#1a73e8; --accent-text:#fff; --done:#e9f5ec; --warn:#fff6e0; }\n  @media (prefers-color-scheme: dark) {\n    :root { --bg:#161616; --card:#222; --text:#eee; --muted:#a0a0a0; --line:#353535;\n            --accent:#8ab4f8; --accent-text:#10213d; --done:#1d2f22; --warn:#3a2f14; }\n  }\n  * { box-sizing: border-box; }\n  body { margin:0; background:var(--bg); color:var(--text);\n         font:16px/1.5 -apple-system, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif; }\n  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }\n  h1 { margin: 0 0 4px; font-size: 28px; }\n  .muted { color: var(--muted); }\n  .note { background: var(--warn); border-radius: 10px; padding: 12px 14px; margin: 16px 0; font-size: 15px; }\n  .bar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 16px 0; }\n  .tab { border:1px solid var(--line); background:var(--card); color:var(--text); border-radius:999px;\n         padding:6px 14px; font-size:14px; cursor:pointer; }\n  .tab.on { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }\n  input[type=search], input[type=email] { border:1px solid var(--line); background:var(--card); color:var(--text);\n         border-radius:8px; padding:8px 10px; font-size:15px; }\n  input[type=search] { flex: 1 1 220px; }\n  label.hide { font-size:14px; display:flex; gap:6px; align-items:center; }\n  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; margin:12px 0; }\n  .card.done { background: var(--done); }\n  .card.done .body { display:none; }\n  .head { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }\n  .subj { font-weight:600; font-size:17px; overflow-wrap:anywhere; }\n  .meta { font-size:14px; color:var(--muted); overflow-wrap:anywhere; }\n  .preview { font-size:14px; color:var(--muted); margin:8px 0 12px; white-space:pre-wrap; overflow-wrap:anywhere; }\n  textarea { width:100%; min-height:120px; resize:vertical; border:1px solid var(--line); border-radius:8px; padding:10px;\n             background:var(--bg); color:var(--text); font-size:15px; line-height:1.45; font-family:inherit; }\n  .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; align-items:center; }\n  .btn { background:var(--accent); color:var(--accent-text); border:0; border-radius:8px; padding:9px 16px;\n         font-size:15px; font-weight:600; cursor:pointer; text-decoration:none; }\n  .btn.secondary { background:transparent; color:var(--text); border:1px solid var(--line); font-weight:500; }\n  .more { text-align:center; margin: 20px 0; }\n  .empty { text-align:center; padding: 40px 0; }\n<\/style>\n<\/head>\n<body>\n<main>\n  <h1>Important Emails<\/h1>\n  <div class=\"muted\" id=\"count\"><\/div>\n\n  <div class=\"note\">\n    <b>How this works:<\/b> read the email, edit the reply in the box, then click <b>Open in Gmail<\/b>.\n    Gmail opens with the reply ready to go. Check it and press Send yourself. Nothing is sent automatically.\n    <br><b>Never<\/b> agree to exclusive rights, send passwords, or pay anyone upfront over email.\n  <\/div>\n\n  <div class=\"bar\">\n    <label for=\"acct\" class=\"muted\" style=\"font-size:14px\">Your Gmail address (optional):<\/label>\n    <input type=\"email\" id=\"acct\" placeholder=\"you@gmail.com\" size=\"26\">\n  <\/div>\n  <div class=\"bar\" id=\"tabs\"><button class=\"tab on\" data-cat=\"\">All<\/button>{{TABS}}<\/div>\n  <div class=\"bar\">\n    <input type=\"search\" id=\"q\" placeholder=\"Search by name, company or subject\">\n    <label class=\"hide\"><input type=\"checkbox\" id=\"hideDone\" checked> Hide emails I've replied to<\/label>\n  <\/div>\n\n  <div id=\"list\"><\/div>\n  <div class=\"more\"><button class=\"btn secondary\" id=\"more\" hidden>Show more<\/button><\/div>\n<\/main>\n\n<script type=\"application/json\" id=\"data\">{{DATA}}<\/script>\n<script>\nconst EMAILS = JSON.parse(document.getElementById('data').textContent);\nconst KEY = 'replies:' + {{KEY}} + ':';\nconst PAGE = 40;\nconst store = {\n  get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },\n  set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) {} },\n};\nlet cat = '', shown = PAGE;\nconst done = new Set(store.get('done', []));\nconst drafts = store.get('drafts', {});\nconst $ = s => document.querySelector(s);\nconst acct = $('#acct');\nacct.value = store.get('acct', '');\nacct.oninput = () => store.set('acct', acct.value.trim());\n\nfunction esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }\n\nfunction gmailUrl(e, body) {\n  const p = new URLSearchParams({ view: 'cm', fs: '1', to: e.to, su: e.reply_subject, body });\n  if (acct.value.trim()) p.set('authuser', acct.value.trim());\n  return 'https://mail.google.com/mail/?' + p.toString();\n}\n\nfunction matches(e) {\n  if (cat && e.category !== cat) return false;\n  if ($('#hideDone').checked && done.has(e.id)) return false;\n  const q = $('#q').value.trim().toLowerCase();\n  return !q || (e.from + ' ' + e.to + ' ' + e.subject + ' ' + e.preview).toLowerCase().includes(q);\n}\n\nfunction render() {\n  const list = EMAILS.filter(matches);\n  const todo = EMAILS.filter(e => !done.has(e.id)).length;\n  $('#count').textContent = `${EMAILS.length.toLocaleString()} emails · ${todo.toLocaleString()} still to reply to`;\n  const box = $('#list');\n  box.innerHTML = list.length ? '' : '<div class=\"empty muted\">Nothing here.<\/div>';\n  for (const e of list.slice(0, shown)) {\n    const card = document.createElement('div');\n    card.className = 'card' + (done.has(e.id) ? ' done' : '');\n    card.innerHTML = `\n      <div class=\"head\">\n        <div><div class=\"subj\">${esc(e.subject) || '(no subject)'}<\/div>\n        <div class=\"meta\">${esc(e.from)} &lt;${esc(e.to)}&gt;<\/div><\/div>\n        <div class=\"meta\">${esc(e.category)}<br>${esc(e.date)}<\/div>\n      <\/div>\n      <div class=\"body\">\n        <div class=\"preview\">${esc(e.preview)}<\/div>\n        <textarea aria-label=\"Reply\"><\/textarea>\n      <\/div>\n      <div class=\"actions\">\n        <a class=\"btn\" target=\"_blank\" rel=\"noopener\">Open in Gmail<\/a>\n        <button class=\"btn secondary copy\">Copy reply<\/button>\n        <label class=\"hide\"><input type=\"checkbox\" class=\"mark\"> Replied<\/label>\n      <\/div>`;\n    const ta = card.querySelector('textarea');\n    ta.value = drafts[e.id] ?? e.draft;\n    const fit = () => { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 4) + 'px'; };\n    ta.oninput = () => { fit(); drafts[e.id] = ta.value; store.set('drafts', drafts); };\n    const link = card.querySelector('a.btn');\n    link.onmousedown = link.onfocus = () => { link.href = gmailUrl(e, ta.value); };\n    link.href = gmailUrl(e, ta.value);\n    card.querySelector('.copy').onclick = async (ev) => {\n      try { await navigator.clipboard.writeText(ta.value); ev.target.textContent = 'Copied!'; }\n      catch (err) { ta.select(); document.execCommand('copy'); ev.target.textContent = 'Copied!'; }\n    };\n    const mark = card.querySelector('.mark');\n    mark.checked = done.has(e.id);\n    mark.onchange = () => {\n      mark.checked ? done.add(e.id) : done.delete(e.id);\n      store.set('done', [...done]);\n      render();\n    };\n    box.appendChild(card);\n    fit();\n  }\n  $('#more').hidden = list.length <= shown;\n}\n\ndocument.querySelectorAll('.tab').forEach(t => t.onclick = () => {\n  document.querySelectorAll('.tab').forEach(x => x.classList.remove('on'));\n  t.classList.add('on'); cat = t.dataset.cat; shown = PAGE; render();\n});\n$('#q').oninput = () => { shown = PAGE; render(); };\n$('#hideDone').onchange = render;\n$('#more').onclick = () => { shown += PAGE; render(); };\nrender();\n<\/script>\n<\/body>\n<\/html>\n"
+};
+const sorter = EmailSorterCore.createSorter(RULES);
+const $ = (s) => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('sorter:' + k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('sorter:' + k, v); } catch (e) {} },
+};
+let chosen = null;
+let result = null;
+
+const sig = $('#signature');
+sig.value = store.get('signature', RULES.signature);
+sig.oninput = () => store.set('signature', sig.value);
+
+function choose(file) {
+  if (!file) return;
+  chosen = file;
+  $('#fileName').textContent = file.name + '  (' + (file.size / 1e6).toFixed(file.size > 1e8 ? 0 : 1) + ' MB)';
+  $('#go').disabled = false;
+  $('#error').hidden = true;
+}
+$('#pick').onclick = (e) => { e.stopPropagation(); $('#file').click(); };
+$('#drop').onclick = () => $('#file').click();
+$('#drop').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#file').click(); } };
+$('#file').onchange = () => choose($('#file').files[0]);
+const drop = $('#drop');
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); choose(e.dataTransfer.files[0]); };
+
+function download(name, parts, type) {
+  const url = URL.createObjectURL(new Blob(parts, { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+$('#go').onclick = async () => {
+  if (!chosen) return;
+  $('#go').disabled = true;
+  $('#pick').disabled = true;
+  $('#error').hidden = true;
+  $('#working').hidden = false;
+  $('#barFill').style.width = '0';
+  $('#status').textContent = 'Starting… (a big inbox can take several minutes, keep this tab open)';
+  try {
+    result = await sorter.run(chosen, ({ emails, fraction }) => {
+      $('#barFill').style.width = (fraction * 100).toFixed(1) + '%';
+      $('#status').textContent = 'Sorted ' + emails.toLocaleString() + ' emails… ' + Math.floor(fraction * 100) + '%';
+    });
+    if (!result.total) throw new Error('No emails were found in that file. Make sure you chose the file from Google Takeout, and that the export included Mail.');
+    showResults();
+  } catch (err) {
+    $('#error').textContent = 'Something went wrong: ' + (err && err.message ? err.message : err);
+    $('#error').hidden = false;
+  } finally {
+    $('#working').hidden = true;
+    $('#go').disabled = false;
+    $('#pick').disabled = false;
+  }
+};
+
+function showResults() {
+  const important = RULES.priority_categories.reduce((n, c) => n + (result.counts.get(c) || 0), 0);
+  $('#doneTitle').textContent = 'Done! Sorted ' + result.total.toLocaleString() + ' emails. ' +
+    important.toLocaleString() + ' look important.';
+  const counts = $('#counts');
+  counts.innerHTML = '';
+  for (const cat of RULES.categories) {
+    const n = result.counts.get(cat) || 0;
+    if (!n) continue;
+    const num = document.createElement('div');
+    num.className = 'n'; num.textContent = n.toLocaleString();
+    const label = document.createElement('div');
+    label.textContent = (RULES.priority_categories.indexOf(cat) !== -1 ? '⭐ ' : '') + cat;
+    label.title = RULES.descriptions[cat];
+    counts.append(num, label);
+  }
+  const key = EmailSorterCore.fileKey(chosen.name, chosen.size);
+  result.pageHtml = sorter.replyPageHtml(result.replyItems, key, sig.value.trim() || RULES.signature);
+  $('#replies').srcdoc = result.pageHtml;
+  $('#setup').hidden = true;
+  $('#results').hidden = false;
+  window.scrollTo(0, 0);
+}
+
+$('#saveReplies').onclick = () => download('Important Emails.html', [result.pageHtml], 'text/html');
+$('#dlPriority').onclick = () => download('important_emails.csv', result.priorityCsv, 'text/csv');
+$('#dlAll').onclick = () => download('all_emails.csv', result.allCsv, 'text/csv');
+$('#again').onclick = () => {
+  $('#results').hidden = true;
+  $('#setup').hidden = false;
+  $('#replies').srcdoc = '';
+  result = null;
+};
+</script>
+</body>
+</html>

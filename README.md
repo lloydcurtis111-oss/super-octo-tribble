@@ -20,47 +20,40 @@ inquiries buried under fan mail, notifications and scams.
 
 ⭐ = priority: these are collected into `priority.csv`, newest first.
 
-## How to use it (no typing needed)
+## How to use it (nothing to install)
 
-### 1. Download the email from Google
-1. On a computer, go to <https://takeout.google.com> and sign in to the Gmail account.
+Works on a **Chromebook**, Windows or Mac. All you need is the Chrome browser.
+
+### 1. Download your email from Google
+1. Go to <https://takeout.google.com> and sign in to the Gmail account.
 2. Click **Deselect all**, then scroll down and tick **Mail** only.
 3. Click **Next step** and then **Create export**.
 4. Wait for Google's email saying the export is ready. For a big inbox this
    can take several hours or up to a day. Download the file it links to (a
    `.zip`). **Don't unzip it**, the sorter reads the zip directly.
 
-### 2. Install Python (one time only, free)
-- Go to <https://www.python.org/downloads/> and click the big yellow Download button.
-- **Windows:** run the installer. On the first screen, **tick "Add python.exe to PATH"**
-  at the bottom, then click **Install Now**.
-- **Mac:** open the downloaded file and click Continue until it's done.
+### 2. Get the Email Sorter
+Download the single file **`Email Sorter.html`** from this project. On GitHub,
+open the file and click the **Download raw file** button (the arrow pointing
+down, at the top right of the file).
 
-### 3. Get this Email Sorter
-On this project's GitHub page, click the green **Code** button, then
-**Download ZIP**. Unzip it (double-click it) and put the folder somewhere easy
-to find, like the Desktop.
-
-### 4. Sort!
-1. Open the Email Sorter folder and double-click:
-   - **Windows:** `Start (Windows)`. Leave the black window that opens
-     alongside it open. If anything goes wrong, the error shows up there.
-   - **Mac:** `Start (Mac)`. The first time, macOS may block it because it's
-     from an "unidentified developer". If it does:
-     1. Click **Done** (or **OK**) on the warning.
-     2. Open **System Settings**, go to **Privacy & Security**, and scroll to the bottom.
-     3. Click **Open Anyway** next to "Start (Mac)", then confirm with **Open Anyway** again.
-
-     On older Macs you can instead **right-click** the file, choose **Open**, and click **Open**.
+### 3. Sort
+1. Open your **Downloads** folder (on a Chromebook: the **Files** app) and
+   double-click **Email Sorter.html**. It opens in Chrome.
 2. Click **Choose file...** and pick the Google Takeout `.zip` from step 1.
-3. Click **Sort my emails**. A big inbox takes a few minutes.
-4. When it's done, the **Important Emails** page opens in your web browser (see step 5).
-   Everything is saved in a **Sorted Emails** folder next to the file you picked.
+3. Click **Sort my emails**. Keep the tab open until it says **Done**.
 
-Everything happens on your own computer. Your emails are never uploaded anywhere.
+Everything happens inside that page. Your emails are never uploaded anywhere,
+and the page works without an internet connection.
 
-### 5. Reply to the important emails
-When sorting finishes, an **Important Emails** page opens in your web browser.
+When it's done you'll see how many emails landed in each category, plus:
+- **Save reply page for later**: saves the reply page (step 4) to your
+  Downloads folder, so you can come back to it without sorting again.
+- **Important emails / All emails (spreadsheet)**: lists that open in
+  Google Sheets or Excel.
+
+### 4. Reply to the important emails
+When sorting finishes, the **Important Emails** list appears under the results.
 It lists every brand deal, licensing, press and management email, plus the
 newest fan mail. Each one comes with a ready-made reply.
 
@@ -74,10 +67,54 @@ newest fan mail. Each one comes with a ready-made reply.
 Tip: if you have more than one Gmail account, type the right address into
 the "Your Gmail address" box at the top so replies come from that account.
 
-To change the ready-made wording (or the "Anthony Taylor" sign-off), edit
-[`replies.py`](replies.py) and sort again.
+Type the name to sign replies with in the **Sign replies as** box before
+sorting. To change the ready-made wording itself, edit [`replies.py`](replies.py)
+and run `python3 build_web.py`.
 
-### What you get in the "Sorted Emails" folder
+## Desktop app for Windows and Mac (older option)
+
+The browser version above is easier. This Python app does the same sorting,
+plus one mailbox file per category, and writes its results into a **Sorted
+Emails** folder next to the email file.
+
+#### 1. Download the email from Google
+1. On a computer, go to <https://takeout.google.com> and sign in to the Gmail account.
+2. Click **Deselect all**, then scroll down and tick **Mail** only.
+3. Click **Next step** and then **Create export**.
+4. Wait for Google's email saying the export is ready. For a big inbox this
+   can take several hours or up to a day. Download the file it links to (a
+   `.zip`). **Don't unzip it**, the sorter reads the zip directly.
+
+#### 2. Install Python (one time only, free)
+- Go to <https://www.python.org/downloads/> and click the big yellow Download button.
+- **Windows:** run the installer. On the first screen, **tick "Add python.exe to PATH"**
+  at the bottom, then click **Install Now**.
+- **Mac:** open the downloaded file and click Continue until it's done.
+
+#### 3. Get this Email Sorter
+On this project's GitHub page, click the green **Code** button, then
+**Download ZIP**. Unzip it (double-click it) and put the folder somewhere easy
+to find, like the Desktop.
+
+#### 4. Sort!
+1. Open the Email Sorter folder and double-click:
+   - **Windows:** `Start (Windows)`. Leave the black window that opens
+     alongside it open. If anything goes wrong, the error shows up there.
+   - **Mac:** `Start (Mac)`. The first time, macOS may block it because it's
+     from an "unidentified developer". If it does:
+     1. Click **Done** (or **OK**) on the warning.
+     2. Open **System Settings**, go to **Privacy & Security**, and scroll to the bottom.
+     3. Click **Open Anyway** next to "Start (Mac)", then confirm with **Open Anyway** again.
+
+     On older Macs you can instead **right-click** the file, choose **Open**, and click **Open**.
+2. Click **Choose file...** and pick the Google Takeout `.zip` from step 1.
+3. Click **Sort my emails**. A big inbox takes a few minutes.
+4. When it's done, the **Important Emails** reply page opens in your web browser.
+   Everything is saved in a **Sorted Emails** folder next to the file you picked.
+
+Everything happens on your own computer. Your emails are never uploaded anywhere.
+
+#### What you get in the "Sorted Emails" folder
 - **`replies.html`**: the Important Emails page above. Double-click it to open it again later.
 - **`priority.csv`**: ⭐ start here. The brand deals, licensing, press and
   management emails, newest first.
@@ -137,8 +174,8 @@ matched to emails by their position in that file.
 All keywords, sender domains and categories live in
 [`categories.py`](categories.py). For example, to catch a new licensing
 company, add its domain to `LICENSING_DOMAINS`. To change what counts as a
-brand deal, edit the keywords under `"Business & Brand Deals"`. Then re-run
-`sort_emails.py`.
+brand deal, edit the keywords under `"Business & Brand Deals"`. Then run
+`python3 build_web.py` to rebuild `Email Sorter.html`.
 
 ## A word on scams
 
@@ -152,3 +189,6 @@ don't click links, don't log in, and don't pay anything.
 ```bash
 python3 -m unittest discover -s tests
 ```
+
+The browser-version tests run the page's code under Node.js and check that it
+sorts every email exactly like the Python version (skipped if Node is missing).

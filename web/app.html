@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Email Sorter</title>
+<!-- Built by build_web.py from web/app.html + web/sorter_core.js + the rules in
+     categories.py and replies.py. Edit those, then run: python3 build_web.py -->
+<style>
+  :root { --bg:#f6f6f4; --card:#fff; --text:#1c1c1c; --muted:#6b6b6b; --line:#e2e2de;
+          --accent:#1a73e8; --accent-text:#fff; --soft:#eef3fd; --warn:#fff6e0; --bad:#fdecea; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161616; --card:#222; --text:#eee; --muted:#a0a0a0; --line:#353535;
+            --accent:#8ab4f8; --accent-text:#10213d; --soft:#1e2a3d; --warn:#3a2f14; --bad:#3d1f1c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+         font:16px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 30px; }
+  h2 { margin: 0 0 10px; font-size: 19px; }
+  .muted { color: var(--muted); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin:16px 0; }
+  ol { margin: 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  .btn { display:inline-block; background:var(--accent); color:var(--accent-text); border:0; border-radius:8px;
+         padding:11px 20px; font-size:16px; font-weight:600; cursor:pointer; text-decoration:none; }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn.secondary { background:transparent; color:var(--text); border:1px solid var(--line); font-weight:500; }
+  .btn.big { font-size:18px; padding:14px 28px; }
+  .drop { border:2px dashed var(--line); border-radius:12px; padding:26px 16px; text-align:center; cursor:pointer; }
+  .drop.over { border-color:var(--accent); background:var(--soft); }
+  .drop .file { font-weight:600; margin-top:10px; overflow-wrap:anywhere; }
+  label.field { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-top:14px; font-size:15px; }
+  input[type=text] { border:1px solid var(--line); background:var(--bg); color:var(--text); border-radius:8px;
+         padding:8px 10px; font-size:15px; min-width:200px; }
+  .bar { height:12px; background:var(--line); border-radius:99px; overflow:hidden; margin:12px 0 8px; }
+  .bar > div { height:100%; width:0; background:var(--accent); transition: width .3s; }
+  .error { background:var(--bad); border-radius:10px; padding:12px 14px; margin-top:12px; }
+  .privacy { background:var(--warn); border-radius:10px; padding:10px 14px; font-size:15px; }
+  .counts { display:grid; grid-template-columns: max-content 1fr; gap:2px 14px; margin: 8px 0 16px; }
+  .counts .n { text-align:right; font-variant-numeric: tabular-nums; }
+  .actions { display:flex; flex-wrap:wrap; gap:10px; }
+  iframe { width:100%; height:85vh; border:1px solid var(--line); border-radius:12px; background:var(--bg); margin-top:16px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Email Sorter</h1>
+  <div class="muted">Finds the brand deals, licensing offers and press requests buried in a flooded inbox,
+    and helps you reply to them.</div>
+
+  <div id="setup">
+    <div class="card">
+      <h2>1. Get your email from Google</h2>
+      <ol>
+        <li>Open <a href="https://takeout.google.com" target="_blank" rel="noopener">takeout.google.com</a> and sign in.</li>
+        <li>Click <b>Deselect all</b>, then scroll down and tick <b>Mail</b>.</li>
+        <li>Click <b>Next step</b>, then <b>Create export</b>.</li>
+        <li>Google emails you when it's ready (a few minutes to a day). Download the <b>.zip</b> file. No need to unzip it.</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <h2>2. Choose the file and sort</h2>
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose your Google Takeout file">
+        <button class="btn secondary" type="button" id="pick">Choose file&hellip;</button>
+        <div class="muted" style="margin-top:8px">or drag the file here &middot; a .zip or .mbox from Google Takeout</div>
+        <div class="file" id="fileName"></div>
+      </div>
+      <input type="file" id="file" accept=".zip,.mbox" hidden>
+      <label class="field">Sign replies as:
+        <input type="text" id="signature" autocomplete="name">
+      </label>
+      <div style="margin-top:16px">
+        <button class="btn big" id="go" disabled>Sort my emails</button>
+      </div>
+      <div id="working" hidden>
+        <div class="bar"><div id="barFill"></div></div>
+        <div id="status" class="muted"></div>
+      </div>
+      <div class="error" id="error" hidden></div>
+    </div>
+
+    <div class="privacy">&#128274; Your emails never leave this computer. Everything happens inside this page,
+      and nothing is uploaded anywhere.</div>
+  </div>
+
+  <div id="results" hidden>
+    <div class="card">
+      <h2 id="doneTitle"></h2>
+      <div class="counts" id="counts"></div>
+      <div class="actions">
+        <button class="btn" id="saveReplies">Save reply page for later</button>
+        <button class="btn secondary" id="dlPriority">Important emails (spreadsheet)</button>
+        <button class="btn secondary" id="dlAll">All emails (spreadsheet)</button>
+        <button class="btn secondary" id="again">Sort another file</button>
+      </div>
+      <div class="muted" style="margin-top:10px; font-size:14px">Tip: click <b>Save reply page for later</b> so you
+        can come back to your replies without sorting again. It saves to your Downloads folder.</div>
+    </div>
+    <iframe id="replies" title="Important emails"></iframe>
+  </div>
+</main>
+
+<script>
+/*__CORE__*/
+</script>
+<script>
+const RULES = /*__RULES__*/;
+const sorter = EmailSorterCore.createSorter(RULES);
+const $ = (s) => document.querySelector(s);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('sorter:' + k); return v === null ? d : v; } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem('sorter:' + k, v); } catch (e) {} },
+};
+let chosen = null;
+let result = null;
+
+const sig = $('#signature');
+sig.value = store.get('signature', RULES.signature);
+sig.oninput = () => store.set('signature', sig.value);
+
+function choose(file) {
+  if (!file) return;
+  chosen = file;
+  $('#fileName').textContent = file.name + '  (' + (file.size / 1e6).toFixed(file.size > 1e8 ? 0 : 1) + ' MB)';
+  $('#go').disabled = false;
+  $('#error').hidden = true;
+}
+$('#pick').onclick = (e) => { e.stopPropagation(); $('#file').click(); };
+$('#drop').onclick = () => $('#file').click();
+$('#drop').onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); $('#file').click(); } };
+$('#file').onchange = () => choose($('#file').files[0]);
+const drop = $('#drop');
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add('over'); };
+drop.ondragleave = () => drop.classList.remove('over');
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove('over'); choose(e.dataTransfer.files[0]); };
+
+function download(name, parts, type) {
+  const url = URL.createObjectURL(new Blob(parts, { type }));
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+$('#go').onclick = async () => {
+  if (!chosen) return;
+  $('#go').disabled = true;
+  $('#pick').disabled = true;
+  $('#error').hidden = true;
+  $('#working').hidden = false;
+  $('#barFill').style.width = '0';
+  $('#status').textContent = 'Starting… (a big inbox can take several minutes, keep this tab open)';
+  try {
+    result = await sorter.run(chosen, ({ emails, fraction }) => {
+      $('#barFill').style.width = (fraction * 100).toFixed(1) + '%';
+      $('#status').textContent = 'Sorted ' + emails.toLocaleString() + ' emails… ' + Math.floor(fraction * 100) + '%';
+    });
+    if (!result.total) throw new Error('No emails were found in that file. Make sure you chose the file from Google Takeout, and that the export included Mail.');
+    showResults();
+  } catch (err) {
+    $('#error').textContent = 'Something went wrong: ' + (err && err.message ? err.message : err);
+    $('#error').hidden = false;
+  } finally {
+    $('#working').hidden = true;
+    $('#go').disabled = false;
+    $('#pick').disabled = false;
+  }
+};
+
+function showResults() {
+  const important = RULES.priority_categories.reduce((n, c) => n + (result.counts.get(c) || 0), 0);
+  $('#doneTitle').textContent = 'Done! Sorted ' + result.total.toLocaleString() + ' emails. ' +
+    important.toLocaleString() + ' look important.';
+  const counts = $('#counts');
+  counts.innerHTML = '';
+  for (const cat of RULES.categories) {
+    const n = result.counts.get(cat) || 0;
+    if (!n) continue;
+    const num = document.createElement('div');
+    num.className = 'n'; num.textContent = n.toLocaleString();
+    const label = document.createElement('div');
+    label.textContent = (RULES.priority_categories.indexOf(cat) !== -1 ? '⭐ ' : '') + cat;
+    label.title = RULES.descriptions[cat];
+    counts.append(num, label);
+  }
+  const key = EmailSorterCore.fileKey(chosen.name, chosen.size);
+  result.pageHtml = sorter.replyPageHtml(result.replyItems, key, sig.value.trim() || RULES.signature);
+  $('#replies').srcdoc = result.pageHtml;
+  $('#setup').hidden = true;
+  $('#results').hidden = false;
+  window.scrollTo(0, 0);
+}
+
+$('#saveReplies').onclick = () => download('Important Emails.html', [result.pageHtml], 'text/html');
+$('#dlPriority').onclick = () => download('important_emails.csv', result.priorityCsv, 'text/csv');
+$('#dlAll').onclick = () => download('all_emails.csv', result.allCsv, 'text/csv');
+$('#again').onclick = () => {
+  $('#results').hidden = true;
+  $('#setup').hidden = false;
+  $('#replies').srcdoc = '';
+  result = null;
+};
+</script>
+</body>
+</html>
